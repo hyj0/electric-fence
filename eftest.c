@@ -5,6 +5,7 @@
 #include <setjmp.h>
 #include <signal.h>
 #include "efence.h"
+#include <setjmp.h>
 
 /*
  * Electric Fence confidence tests.
@@ -23,6 +24,18 @@ struct diagnostic {
 
 extern int	EF_PROTECT_BELOW;
 extern int	EF_ALIGNMENT;
+
+void siglongjmp(jmp_buf env, int val)
+{
+	longjmp(env, val);
+}
+int sigsetjmp(jmp_buf env, int savemask)
+{
+	return setjmp(env);
+}
+
+#define sigjmp_buf jmp_buf
+
 
 static sigjmp_buf	env;
 

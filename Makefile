@@ -4,7 +4,7 @@ AR= ar
 INSTALL= install
 MV= mv
 CHMOD= chmod
-CFLAGS= -g
+CFLAGS= -g -std=c99
 LIB_INSTALL_DIR= /usr/lib
 MAN_INSTALL_DIR= /usr/man/man3
 

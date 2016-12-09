@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <bits/sys_errlist.h>
 
 /*
  * Lots of systems are missing the definition of PROT_NONE.
@@ -30,6 +31,8 @@
  */
 /* extern C_LINKAGE int mprotect(void * addr, size_t len, int prot); */
 
+#define caddr_t void*
+
 static caddr_t	startAddr = (caddr_t) 0;
 
 #if ( !defined(sgi) && !defined(_AIX) && __DARWIN_C_LEVEL < __DARWIN_C_FULL )
@@ -45,8 +48,8 @@ stringErrorReport(void)
 #elif ( defined(_AIX) )
 	return strerror(errno);
 #else
-	if ( errno > 0 && errno < sys_nerr )
-		return sys_errlist[errno];
+	if ( errno > 0 )
+		return strerror(errno);
 	else
 		return "Unknown error.\n";
 #endif

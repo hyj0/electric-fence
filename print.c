@@ -16,6 +16,7 @@
  * to represent an unsigned integer, assuming we might print in base 2.
  */
 #define	NUMBER_BUFFER_SIZE	(sizeof(ef_number) * NBBY)
+#define u_int unsigned int
 
 static void
 printNumber(ef_number number, ef_number base)

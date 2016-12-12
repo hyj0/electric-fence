@@ -10,6 +10,7 @@
 #include <memory>
 #include <string.h>
 #include <errno.h>
+#include <sys/mman.h>
 
 using namespace std;
 
@@ -27,17 +28,23 @@ struct MemoryInfo {
 };
 
 MemoryInfo *newMemoryInfo() {
-    //todo: need optimize space
-    void *address = Page_Create(sizeof(MemoryInfo));
-    return (MemoryInfo *) address;
+    static MemoryInfo *MemoryInfoBuffer;
+    static int MemoryInfoCount = 10240;
+    static int MemoryInfoBufferIndex = 0;
+
+    if (MemoryInfoBufferIndex == 0) {
+        MemoryInfoBuffer = (MemoryInfo *) Page_Create(sizeof(MemoryInfo) * MemoryInfoCount);
+    }
+
+    MemoryInfo *address = &MemoryInfoBuffer[MemoryInfoBufferIndex++];
+
+    if (MemoryInfoBufferIndex >= MemoryInfoCount) {
+        MemoryInfoBufferIndex = 0;
+    }
+    return address;
 }
 
-MemoryInfo g_memoryInfoHeadInstance;
-MemoryInfo *g_memoryInfoHead;
-
-void init_g_memoryInfoHead() {
-    g_memoryInfoHead = &g_memoryInfoHeadInstance;
-}
+extern MemoryInfo g_memoryInfoHeadInstance;
 
 class AllocManager {
 public:
@@ -46,7 +53,7 @@ public:
         return (AllocManager &) allocManager;
     }
     MemoryInfo * getMemoryInfo(void *userAddress) {
-        init_g_memoryInfoHead();
+        MemoryInfo *g_memoryInfoHead = &g_memoryInfoHeadInstance;
         //todo:just a list, need optimize
         MemoryInfo *mp = g_memoryInfoHead->next;
         while (mp != NULL) {
@@ -62,7 +69,7 @@ public:
     }
 
     void addMemoryInfo(MemoryInfo *memoryInfo) {
-        init_g_memoryInfoHead();
+        MemoryInfo *g_memoryInfoHead = &g_memoryInfoHeadInstance;
         MemoryInfo *g_next = g_memoryInfoHead->next;
         g_memoryInfoHead->next = memoryInfo;
         memoryInfo->next = g_next;
@@ -123,7 +130,7 @@ public:
         if (memoryInfo == NULL) {
             if (address == 0) {
                 //i do not know why address == 0 happy
-                EF_Print("delete Memory no found address:0x%a\n", address);
+//                EF_Print("delete Memory no found address:0x%a\n", address);
                 return;
             }
             EF_Abort("delete Memory no found address:0x%a\n", address);
@@ -141,6 +148,8 @@ public:
 
         Page_DenyAccess(memoryInfo->startAddress, memoryInfo->totalSize);
         allocManager.deleteMemoryInfo(memoryInfo);
+        //unmap, and it can also be protect
+        munmap(memoryInfo->startAddress, memoryInfo->totalSize);
     }
 
     size_t getAllocSize(void *address) {

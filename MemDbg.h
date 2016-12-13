@@ -24,8 +24,45 @@ struct MemoryInfo {
     size_t userSize;
     size_t totalSize;
     MemoryInfo *next;
-    int status;//1--Ok, 0--has been free
+    MemoryInfo *prev;
 };
+
+class MemoryInfoGcQueque {
+public:
+    void initList() {
+        if (head.next == NULL) {
+            head.next = &tail;
+            tail.prev = &head;
+        }
+    }
+    void enque(MemoryInfo *pInfo) {
+        initList();
+        MemoryInfo *oldNext = head.next;
+        head.next = pInfo;
+        pInfo->next = oldNext;
+        
+        pInfo->prev = &head;
+        oldNext->prev = pInfo;
+    }
+
+    MemoryInfo *deque() {
+        initList();
+        MemoryInfo *retMemInfo = tail.prev;
+        if (retMemInfo == &head) {
+            return NULL;
+        }
+
+        MemoryInfo *pPrevMemInfo = retMemInfo->prev;
+        pPrevMemInfo->next = &tail;
+        tail.prev = pPrevMemInfo;
+        return retMemInfo;
+    }
+private:
+    MemoryInfo head;
+    MemoryInfo tail;
+};
+
+extern MemoryInfoGcQueque g_memoryInfoGcQueque;
 
 MemoryInfo *newMemoryInfo() {
     static MemoryInfo *MemoryInfoBuffer;
@@ -33,7 +70,13 @@ MemoryInfo *newMemoryInfo() {
     static int MemoryInfoBufferIndex = 0;
 
     if (MemoryInfoBufferIndex == 0) {
-        MemoryInfoBuffer = (MemoryInfo *) Page_Create(sizeof(MemoryInfo) * MemoryInfoCount);
+        //try to use gc que
+        MemoryInfo *memoryInfo = g_memoryInfoGcQueque.deque();
+        if (memoryInfo != NULL) {
+            return memoryInfo;
+        } else {
+            MemoryInfoBuffer = (MemoryInfo *) Page_Create(sizeof(MemoryInfo) * MemoryInfoCount);
+        }
     }
 
     MemoryInfo *address = &MemoryInfoBuffer[MemoryInfoBufferIndex++];
@@ -44,7 +87,62 @@ MemoryInfo *newMemoryInfo() {
     return address;
 }
 
-extern MemoryInfo g_memoryInfoHeadInstance;
+#define HASH_MAX_KEY 350899
+
+struct MemInfoKV {
+    MemoryInfo memoryInfo;
+};
+
+class HashMap {
+public:
+    unsigned long getKey(void *userAddress) {
+        return (unsigned long) userAddress % HASH_MAX_KEY;
+    }
+
+    MemoryInfo *get(void *pUserAddress) {
+        unsigned long key = this->getKey(pUserAddress);
+        MemoryInfo *m = &memInfoKV[key].memoryInfo;
+        MemoryInfo *mp = m->next;
+        while (mp != NULL) {
+            if (mp->userAddress == pUserAddress) {
+                return mp;
+            }
+            mp = mp->next;
+        }
+        return NULL;
+    }
+
+    int insert(MemoryInfo *pInfo) {
+        unsigned long key = this->getKey(pInfo->userAddress);
+        MemInfoKV &memInfokv = memInfoKV[key];
+        MemoryInfo *oldNext = memInfokv.memoryInfo.next;
+        memInfokv.memoryInfo.next = pInfo;
+        pInfo->next = oldNext;
+        return 0;
+    }
+
+    int deleteKey(MemoryInfo *pInfo) {
+        unsigned long key = this->getKey(pInfo->userAddress);
+        MemoryInfo *m = &memInfoKV[key].memoryInfo;
+        MemoryInfo *preMp = m;
+        MemoryInfo *mp = m->next;
+        while (mp != NULL) {
+            if (mp->userAddress == pInfo->userAddress) {
+                preMp->next = mp->next;
+                return 0;
+            }
+            preMp = mp;
+            mp = mp->next;
+        }
+        EF_Print("delet key no found key address:0x%a\n", pInfo->userAddress);
+        return -1;
+    }
+
+private:
+    MemInfoKV memInfoKV[HASH_MAX_KEY];
+};
+
+extern HashMap g_MemoryInfoHashMap;
 
 class AllocManager {
 public:
@@ -53,27 +151,20 @@ public:
         return (AllocManager &) allocManager;
     }
     MemoryInfo * getMemoryInfo(void *userAddress) {
-        MemoryInfo *g_memoryInfoHead = &g_memoryInfoHeadInstance;
-        //todo:just a list, need optimize
-        MemoryInfo *mp = g_memoryInfoHead->next;
-        while (mp != NULL) {
-            if (mp->userAddress == userAddress && mp->status == 1) {
-                return mp;
-            }
-            mp = mp->next;
-        }
-        return mp;
+        MemoryInfo *pMemInfo =  g_MemoryInfoHashMap.get(userAddress);
+        return pMemInfo;
     }
     void deleteMemoryInfo(MemoryInfo *memoryInfo) {
-        memoryInfo->status = 0;
+        int ret = g_MemoryInfoHashMap.deleteKey(memoryInfo);
+        if (ret != 0) {
+            EF_Abort("delete err no found MemoryInfo userAddress:%a\n", memoryInfo->userAddress);
+        }
+        //:record memoryInfo has been delete
+        g_memoryInfoGcQueque.enque(memoryInfo);
     }
 
     void addMemoryInfo(MemoryInfo *memoryInfo) {
-        MemoryInfo *g_memoryInfoHead = &g_memoryInfoHeadInstance;
-        MemoryInfo *g_next = g_memoryInfoHead->next;
-        g_memoryInfoHead->next = memoryInfo;
-        memoryInfo->next = g_next;
-        memoryInfo->status = 1;
+        int ret = g_MemoryInfoHashMap.insert(memoryInfo);
     }
 };
 

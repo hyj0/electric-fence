@@ -4,7 +4,8 @@
 
 #include "MemDbg.h"
 
-MemoryInfo g_memoryInfoHeadInstance;
+HashMap g_MemoryInfoHashMap;
+MemoryInfoGcQueque g_memoryInfoGcQueque;
 
 extern C_LINKAGE void *
         malloc(size_t size);

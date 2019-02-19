@@ -3,6 +3,11 @@
 //
 
 #include "MemDbg.h"
+extern "C" {
+#include "spinlock.h"
+}
+
+static spinlock  g_splinlock = 0;
 
 HashMap g_MemoryInfoHashMap;
 MemoryInfoGcQueque g_memoryInfoGcQueque;
@@ -13,7 +18,9 @@ extern C_LINKAGE void *
 extern C_LINKAGE void
 free(void * address)
 {
+    spin_lock(&g_splinlock);
     MemDbg::getInstance().deleteMemory(address);
+    spin_unlock(&g_splinlock);
 }
 
 extern C_LINKAGE void *
@@ -21,7 +28,9 @@ realloc(void * oldBuffer, size_t newSize)
 {
     void *newBuffer = malloc(newSize);
     if (oldBuffer) {
+        spin_lock(&g_splinlock);
         size_t size = MemDbg::getInstance().getAllocSize(oldBuffer);
+        spin_unlock(&g_splinlock);
         if (newSize < size) {
             size = newSize;
         }
@@ -36,7 +45,9 @@ realloc(void * oldBuffer, size_t newSize)
 extern C_LINKAGE void *
 malloc(size_t size)
 {
+    spin_lock(&g_splinlock);
     void *address = MemDbg::getInstance().createMemory(size);
+    spin_unlock(&g_splinlock);
     return address;
 }
 
